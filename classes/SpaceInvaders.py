@@ -12,6 +12,7 @@ MOVE_FAST_UFO_INCREMENT = 1
 SHIP_RECHARGE = 1  # 1 sec to recharge
 GAME_SPEED = 1000 // 100  # each 0.1 sec update
 BULLET_SPEED = 2
+EXPLOSION_LIFE_TIME = 1
 
 ALL_SHIP_DIRECTIONS = ("Left", "Right")
 
@@ -27,9 +28,12 @@ class SpaceInvaders(tk.Canvas):
         self.ship_shoot = False
         self.ship_recharge_time = int(time.time())
         self.ufo_positions = [(300, 300), (200, 200)]
+        self.ufo_size = (10, 10)
         self.ship_bullets = []
         self.ufo_bullets = []
         self.threshold = 580  # if space invader go down to this, fail
+
+        self.ufo_explosions_times = []
 
         self.bind_all("<KeyPress>", self.on_key_press)
         self.bind_all("<KeyRelease>", self.on_key_release)
@@ -88,7 +92,7 @@ class SpaceInvaders(tk.Canvas):
             #os.system("afplay " + self.sound_ufo_lowpitch)
 
         except IOError as error:
-            print(error)
+            print('Load assets error:', error)
             return
 
     def create_objects(self):
@@ -100,8 +104,11 @@ class SpaceInvaders(tk.Canvas):
         self.create_image(*self.ship_position, image=self.ship, tag="ship")
 
         for x_position, y_position in self.ufo_positions:
-            self.create_image(x_position, y_position, image=self.ufo, tag="ufo")
+            ufo_canvas = self.create_image(x_position, y_position, image=self.ufo, tag="ufo")
 
+        ufo_size = self.bbox(ufo_canvas)
+        # x1, y2, x2, y2
+        self.ufo_size = ((ufo_size[2]-ufo_size[0]) // 2, (ufo_size[3]-ufo_size[1]) // 2)
         self.create_rectangle(7, 27, 593, 613, outline="#525d69")
 
     def on_key_press(self, e):
@@ -110,7 +117,6 @@ class SpaceInvaders(tk.Canvas):
         if new_direction in ALL_SHIP_DIRECTIONS:
             self.ship_direction = new_direction
 
-        self.ship_shoot = False
         if new_direction == "space":
             self.ship_shoot = True
 
@@ -165,7 +171,47 @@ class SpaceInvaders(tk.Canvas):
             self.ship_recharge_time = int(time.time()) + SHIP_RECHARGE
 
     def check_collisions(self):
+        if self.ship_bullets:  # do not need to check if no bullets
+            bullet_list = []
+            for ship_bullet in self.ship_bullets:
+                bullet_top = (ship_bullet[0], ship_bullet[1])
+                bullet_list.append(bullet_top)
+
+            for segment, position in zip(self.find_withtag("ufo"), self.ufo_positions):
+                # we need to check withing the ufo object width
+
+                for bullet in bullet_list:
+                    if (
+                         (bullet[0] - self.ufo_size[0] < position[0] < bullet[0] + self.ufo_size[0]) and
+                         (bullet[1] - self.ufo_size[1] < position[1] < bullet[1] + self.ufo_size[1])
+                    ):
+                        self.destroy_ufo(segment, position)
+                        self.remove_bullet(bullet)
         return False
+
+    def remove_bullet(self, position):
+        # remove bullet from canvas
+        for segment, bullet_position in zip(self.find_withtag("ship_bullet"), self.ship_bullets):
+            if (bullet_position[0], bullet_position[1]) == position:
+                self.delete(segment)
+
+        # remove bullet from list
+        self.ship_bullets = [item for item in self.ship_bullets if not (item[0], item[1]) == position]
+
+    def destroy_ufo(self, segment, position):
+        self.delete(segment)
+        self.create_image(*position, image=self.invader_killed, tag="ufo_explosion")
+        self.ufo_explosions_times.append(int(time.time() + EXPLOSION_LIFE_TIME))
+        # remove bullet from list
+        self.ufo_positions = [item for item in self.ufo_positions if not (item[0], item[1]) == position]
+
+    def remove_explosions(self):
+        if self.ufo_explosions_times:
+            curr_time = int(time.time())
+            for segment, explosion_time in zip(self.find_withtag("ufo_explosion"), self.ufo_explosions_times):
+                if explosion_time < curr_time:
+                    self.delete(segment)
+            self.ufo_explosions_times = [item for item in self.ufo_explosions_times if item >= curr_time]
 
     def end_game(self):
         pass
@@ -173,12 +219,11 @@ class SpaceInvaders(tk.Canvas):
     def check_ufo_collisions(self):
         pass
 
-
     def perform_actions(self):
         if self.check_collisions():
             self.end_game()
             return
-
+        self.remove_explosions()
         self.check_ufo_collisions()
         self.move_ufos()
         self.move_bullets()
