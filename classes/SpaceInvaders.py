@@ -7,7 +7,9 @@ from tkinter import ttk
 from PIL import ImageTk, Image
 
 MOVE_SHIP_INCREMENT = 1
-MOVE_UFO_INCREMENT = 1
+MOVE_UFO_VERTICAL_INCREMENT = 10
+MOVE_UFO_HORIZONTAL_INCREMENT = 5
+MOVE_UFO_ENGINE_RECHARGE = 1
 MOVE_FAST_UFO_INCREMENT = 1
 SHIP_RECHARGE = 1  # 1 sec to recharge
 GAME_SPEED = 1000 // 100  # each 0.1 sec update
@@ -29,6 +31,9 @@ class SpaceInvaders(tk.Canvas):
         self.ship_recharge_time = int(time.time())
         self.ufo_positions = [(300, 300), (200, 200)]
         self.ufo_size = (10, 10)
+        self.ufo_engine_vertical_charge = int(time.time())
+        self.ufo_engine_horizontal_charge = int(time.time())
+        self.ufo_movement_direction = 'Left'
         self.ship_bullets = []
         self.ufo_bullets = []
         self.threshold = 580  # if space invader go down to this, fail
@@ -140,7 +145,37 @@ class SpaceInvaders(tk.Canvas):
             self.coords(self.find_withtag("ship"), self.ship_position)
 
     def move_ufos(self):
-        pass
+
+        if self.ufo_engine_horizontal_charge <= int(time.time()):
+            self.ufo_engine_horizontal_charge = int(time.time()) + MOVE_UFO_ENGINE_RECHARGE
+
+            change_direction = False
+            new_ufo_positions = []
+            for ufo_position in self.ufo_positions:
+                if self.ufo_movement_direction == 'Left':
+                    new_ufo_position = (ufo_position[0] - MOVE_UFO_HORIZONTAL_INCREMENT, ufo_position[1])
+                    if new_ufo_position[0] < 7 + self.ufo_size[0]:
+                        change_direction = True
+                elif self.ufo_movement_direction == 'Right':
+                    new_ufo_position = (ufo_position[0] + MOVE_UFO_HORIZONTAL_INCREMENT, ufo_position[1])
+                    if new_ufo_position[0] > 583 - self.ufo_size[0]:
+                        change_direction = True
+                else:  # 'Down'
+                    new_ufo_position = (ufo_position[0], ufo_position[1] + MOVE_UFO_VERTICAL_INCREMENT)
+                    change_direction = True
+                new_ufo_positions.append(new_ufo_position)
+            self.ufo_positions = new_ufo_positions
+
+            if change_direction:
+                if self.ufo_movement_direction == 'Left':
+                    self.ufo_movement_direction = 'Down'
+                elif self.ufo_movement_direction == 'Down':
+                    self.ufo_movement_direction = 'Right'
+                else:
+                    self.ufo_movement_direction = 'Left'
+
+        for segment, position in zip(self.find_withtag("ufo"), self.ufo_positions):
+            self.coords(segment, position)
 
     def move_bullets(self):
         if self.ship_bullets:
@@ -170,23 +205,7 @@ class SpaceInvaders(tk.Canvas):
             self.ship_bullets.append(ship_bullet_coord)
             self.ship_recharge_time = int(time.time()) + SHIP_RECHARGE
 
-    def check_collisions(self):
-        if self.ship_bullets:  # do not need to check if no bullets
-            bullet_list = []
-            for ship_bullet in self.ship_bullets:
-                bullet_top = (ship_bullet[0], ship_bullet[1])
-                bullet_list.append(bullet_top)
-
-            for segment, position in zip(self.find_withtag("ufo"), self.ufo_positions):
-                # we need to check withing the ufo object width
-
-                for bullet in bullet_list:
-                    if (
-                         (bullet[0] - self.ufo_size[0] < position[0] < bullet[0] + self.ufo_size[0]) and
-                         (bullet[1] - self.ufo_size[1] < position[1] < bullet[1] + self.ufo_size[1])
-                    ):
-                        self.destroy_ufo(segment, position)
-                        self.remove_bullet(bullet)
+    def check_loose(self):
         return False
 
     def remove_bullet(self, position):
@@ -217,10 +236,25 @@ class SpaceInvaders(tk.Canvas):
         pass
 
     def check_ufo_collisions(self):
-        pass
+        if self.ship_bullets:  # do not need to check if no bullets
+            bullet_list = []
+            for ship_bullet in self.ship_bullets:
+                bullet_top = (ship_bullet[0], ship_bullet[1])
+                bullet_list.append(bullet_top)
+
+            for segment, position in zip(self.find_withtag("ufo"), self.ufo_positions):
+                # we need to check withing the ufo object width
+
+                for bullet in bullet_list:
+                    if (
+                            (bullet[0] - self.ufo_size[0] < position[0] < bullet[0] + self.ufo_size[0]) and
+                            (bullet[1] - self.ufo_size[1] < position[1] < bullet[1] + self.ufo_size[1])
+                    ):
+                        self.destroy_ufo(segment, position)
+                        self.remove_bullet(bullet)
 
     def perform_actions(self):
-        if self.check_collisions():
+        if self.check_loose():
             self.end_game()
             return
         self.remove_explosions()
