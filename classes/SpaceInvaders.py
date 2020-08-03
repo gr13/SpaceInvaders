@@ -5,12 +5,15 @@ from os import path
 import tkinter as tk
 from tkinter import ttk
 from PIL import ImageTk, Image
+import random
 
 MOVE_SHIP_INCREMENT = 1
 MOVE_UFO_VERTICAL_INCREMENT = 10
 MOVE_UFO_HORIZONTAL_INCREMENT = 5
 MOVE_UFO_ENGINE_RECHARGE = 1
 MOVE_FAST_UFO_INCREMENT = 1
+UFO_RECHARGE = 2
+
 SHIP_RECHARGE = 1  # 1 sec to recharge
 GAME_SPEED = 1000 // 100  # each 0.1 sec update
 BULLET_SPEED = 2
@@ -34,6 +37,8 @@ class SpaceInvaders(tk.Canvas):
         self.ufo_engine_vertical_charge = int(time.time())
         self.ufo_engine_horizontal_charge = int(time.time())
         self.ufo_movement_direction = 'Left'
+        self.ufo_recharge_time = 0
+        self.ufo_shoot_level = 1
         self.ship_bullets = []
         self.ufo_bullets = []
         self.threshold = 580  # if space invader go down to this, fail
@@ -174,8 +179,32 @@ class SpaceInvaders(tk.Canvas):
                 else:
                     self.ufo_movement_direction = 'Left'
 
+        boottomLevel_UFO = []
+        bottomLevel = 620  # size of canvas
         for segment, position in zip(self.find_withtag("ufo"), self.ufo_positions):
+            if bottomLevel < position[1]:
+                boottomLevel_UFO = []
+                boottomLevel_UFO.append((segment, position))
+            else:
+                boottomLevel_UFO.append((segment, position))
+
             self.coords(segment, position)
+
+        self.ufo_shoot(boottomLevel_UFO)
+
+    def ufo_shoot(self, ufo_list):
+        if time.time() > self.ufo_recharge_time:
+            ufo_shoot_list = random.sample(ufo_list, self.ufo_shoot_level)
+
+            for ufo in ufo_shoot_list:
+                ufo_bullet_coord = (
+                    ufo[1][0], ufo[1][1] + 15, ufo[1][0], ufo[1][1] + 25)
+                self.create_line(
+                    *ufo_bullet_coord,
+                    tag="ufo_bullet", fill="#476042",
+                    width=2, arrow=tk.LAST
+                )
+                self.ufo_bullets.append(ufo_bullet_coord)
 
     def move_bullets(self):
         if self.ship_bullets:
@@ -196,7 +225,10 @@ class SpaceInvaders(tk.Canvas):
             return
 
         if self.ship_shoot:
-            ship_bullet_coord = (self.ship_position[0], self.ship_position[1] - 15, self.ship_position[0], self.ship_position[1] - 25)
+            ship_bullet_coord = (
+                self.ship_position[0], self.ship_position[1] - 15,
+                self.ship_position[0], self.ship_position[1] - 25
+            )
             self.create_line(
                 *ship_bullet_coord,
                 tag="ship_bullet", fill="#476042",
@@ -210,12 +242,19 @@ class SpaceInvaders(tk.Canvas):
 
     def remove_bullet(self, position):
         # remove bullet from canvas
-        for segment, bullet_position in zip(self.find_withtag("ship_bullet"), self.ship_bullets):
-            if (bullet_position[0], bullet_position[1]) == position:
-                self.delete(segment)
+        if self.ship_bullets:
+            for segment, bullet_position in zip(self.find_withtag("ship_bullet"), self.ship_bullets):
+                print('bullet pos:', bullet_position)
+                if (
+                    (bullet_position[0], bullet_position[1]) == position
+                    or bullet_position[1] < 27 + 10
+                ):
+                    print('delete')
+                    self.delete(segment)
 
-        # remove bullet from list
-        self.ship_bullets = [item for item in self.ship_bullets if not (item[0], item[1]) == position]
+            # remove bullet from list
+            self.ship_bullets = [item for item in self.ship_bullets if not (item[0], item[1]) == position]
+            self.ship_bullets = [item for item in self.ship_bullets if item[1] > 27 + 10]
 
     def destroy_ufo(self, segment, position):
         self.delete(segment)
@@ -258,6 +297,7 @@ class SpaceInvaders(tk.Canvas):
             self.end_game()
             return
         self.remove_explosions()
+        self.remove_bullet((0, 0, 0, 0))
         self.check_ufo_collisions()
         self.move_ufos()
         self.move_bullets()
